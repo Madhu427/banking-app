@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  account:
+    build: ./account-service
+    ports:
+      - "3000:3000"  # External Access
+    networks:
+      - banking-net
+
+  notification:
+    build: ./notification-service
+    ports:
+      - "5000:5000"  # External Access
+    networks:
+      - banking-net
+
+  transaction:
+    build: ./transaction-service
+    # NO PORTS MAPPED - Internal only for security
+    networks:
+      - banking-net
+
+networks:
+  banking-net:
+    driver: bridge
