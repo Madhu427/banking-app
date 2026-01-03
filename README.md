@@ -1,5 +1,19 @@
                                                                                Banking APP
 
+Setup Your Workspace on Azure
+Create a VM: Go to the Azure Portal and create a Standard B1s (free tier eligible) Ubuntu 22.04 VM.
+
+Open Ports: In the "Networking" tab, ensure ports 22 (SSH), 3000 (Account Service), and 5000 (Notification Service) are open.
+
+Install Docker: SSH into your VM and run:
+
+Bash
+
+sudo apt update && sudo apt install docker.io -y
+sudo usermod -aG docker $USER && newgrp docker
+
+--------------------------------------------------------------------------------------------------------------------------                                                                               
+
 Step 1: Create the Project Structure
 Run these commands on your Azure VM to create the folders for all three services:
 #######################################
