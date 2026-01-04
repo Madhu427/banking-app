@@ -10,6 +10,7 @@ Install Docker: SSH into your VM and run:
 Bash
 
 sudo apt update && sudo apt install docker.io -y
+
 sudo usermod -aG docker $USER && newgrp docker
 
 --------------------------------------------------------------------------------------------------------------------------                                                                               
@@ -162,6 +163,154 @@ networks:
 
 <img width="492" height="179" alt="image" src="https://github.com/user-attachments/assets/4de86092-510a-4d37-b008-ccbe22da4271" />
 
+========================================================================================================================================
+
+Part-2 Docker swarm Multi-Host Service Orchestration
+
+<img width="574" height="226" alt="image" src="https://github.com/user-attachments/assets/3d1ccd5a-bd99-4ac1-908d-e4f06d996b57" />
+
+For this Part i'm using GCP since i'm having issue with Azure and i'm creating 4 nodes due to some issue
+
+Creating your VM Instances
+In GCP, Virtual Machines are called Compute Engine Instances. To fulfill your assignment's requirement for a 5-node cluster, you need to create them manually or using a script.
+
+Go to the Console: Search for "Compute Engine" in the GCP search bar.
+
+Create Instance: Click "Create Instance."
+
+Name: Call them manager-1, manager-2, manager-3, worker-1, and worker-2.
+
+i'm creating only 2 Manager Nodes
+
+Machine Type: For a student assignment, e2-micro or e2-small is enough and often falls under the "Free Tier."
+
+Boot Disk: Ensure you select Ubuntu 22.04 LTS.
+
+Advanced Networking: Click "Networking" and ensure they are all on the same default network so they can talk to each other internally.
+
+Phase 2: Opening the "Firewall" (The most important step)
+Just like on Azure, GCP blocks traffic by default. If you don't do this, you will get the "Timeout reached" error again.
+
+Go to VPC Network: Search for "Firewall" in the GCP console.
+
+Create Firewall Rule:
+
+Name: allow-swarm-traffic
+
+Targets: Select "All instances in the network."
+
+Source Filter: Set to 0.0.0.0/0 (to allow you to access it) or 10.128.0.0/9 (to only allow internal VM talk).
+
+Protocols and Ports:
+
+TCP: 2377 (Manager communication), 7946 (Node discovery), 3000 (Account Service), 5000 (Notification Service).
+
+UDP: 4789 (Overlay network traffic for Task 3), 7946.
+
+Phase 3: Building the Swarm Step-by-Step
+Now that your VMs are ready and the "gates" are open, you can link them.
+
+SSH into Manager-1: Click the "SSH" button next to your VM in the GCP console.
+
+Initialize the Cluster:
+
+Bash
+
+# GCP uses internal IPs for security. This command initializes the swarm.
+docker swarm init --advertise-addr $(hostname -I | awk '{print $1}')
+Join the other Managers:
+
+On Manager-1, run: docker swarm join-token manager.
+
+Copy that code, SSH into Manager-2 and Manager-3, and paste it.
+
+Join the Workers:
+
+On Manager-1, run: docker swarm join-token worker.
+
+SSH into Worker-1 and Worker-2 and paste it.
+
+<img width="637" height="133" alt="image" src="https://github.com/user-attachments/assets/5c46e18a-53ce-44bb-9723-041d430f464d" />
+
+                      Deploying your SkillfyBank App
+
+Edit your docker-compose.yml Find the networks section at the bottom of your file and change it to this
+
+________
+networks:
+  banking-net:
+    driver: overlay
+    attachable: true
+________
+
+------------------------------
+docker-compse.yml
+
+version: '3.8'
+
+services:
+  account:
+    image: madhu427/account-service:v1
+    ports:
+      - "3000:3000"
+    networks:
+      - banking-net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  notification:
+    image: madhu427/notification-service:v1
+    ports:
+      - "5000:5000"
+    networks:
+      - banking-net
+    deploy:
+      replicas: 2
+      # Requirement: Auto-restart policy
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  transaction:
+    image: madhu427/transaction-service:v1
+    # NO PORTS MAPPED - Internal only for security
+    networks:
+      - banking-net
+    deploy:
+      replicas: 2
+      # Requirement: Rolling update strategy
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+
+networks:
+  banking-net:
+    driver: overlay
+    attachable: true
+
+    _---------------------------------------
+
+Once you have saved the file, run the deploy command again on your Manager-1 node:
+
+docker stack deploy -c docker-compose.yml skillfy-bank
+
+run the below commands once deployment is done
+
+docker network ls
+
+docker stack services skillfy-bank 
+
+<img width="670" height="215" alt="image" src="https://github.com/user-attachments/assets/e517be23-f7b1-4225-b070-28ec77c1e7e1" />
+
+
+Evidence for Overlay Network: Run docker network ls. You should now see the network listed with the scope "swarm" and driver "overlay".
+
+Evidence for Deployment: Run docker stack services skillfy-bank to see your 3 services running across the cluster.
 
 
 
