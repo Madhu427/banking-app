@@ -1,25 +1,75 @@
-version: '3.8'
+# version: '3.8'
+# services:
+#   account:
+#     build: ./account-service
+#     ports:
+#       - "3000:3000"  # External Access
+#     networks:
+#       - banking-net
+
+#   notification:
+#     build: ./notification-service
+#     ports:
+#       - "5000:5000"  # External Access
+#     networks:
+#       - banking-net
+
+#   transaction:
+#     build: ./transaction-service
+#     # NO PORTS MAPPED - Internal only for security
+#     networks:
+#       - banking-net
+
+# networks:
+#   banking-net:
+#     driver: bridgeversion: '3.8'
+
 services:
   account:
-    build: ./account-service
+    image: madhu427/account-service:v1
     ports:
-      - "3000:3000"  # External Access
+      - "3000:3000"
     networks:
       - banking-net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
 
   notification:
-    build: ./notification-service
+    image: madhu427/notification-service:v1
     ports:
-      - "5000:5000"  # External Access
+      - "5000:5000"
     networks:
       - banking-net
+    deploy:
+      replicas: 2
+      # Requirement: Auto-restart policy
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
 
   transaction:
-    build: ./transaction-service
+    image: madhu427/transaction-service:v1
     # NO PORTS MAPPED - Internal only for security
     networks:
       - banking-net
+    deploy:
+      replicas: 2
+      # Requirement: Rolling update strategy
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
 
 networks:
   banking-net:
-    driver: bridge
+    driver: overlay
+    attachable: true
+
+
+
+
+
