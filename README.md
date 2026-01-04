@@ -313,6 +313,138 @@ Evidence for Overlay Network: Run docker network ls. You should now see the netw
 Evidence for Deployment: Run docker stack services skillfy-bank to see your 3 services running across the cluster.
 
 
+<img width="635" height="283" alt="image" src="https://github.com/user-attachments/assets/14c4754b-cb90-4c2b-aa3b-0ed9f2f11bb3" />
+
+Validate Manager High Availability (HA)
+
+The goal is to prove that if the "Leader" manager fails, the remaining managers elect a new leader and the cluster keeps running.
+
+Check current roles: Run docker node ls on Manager-1. Identify which node is the Leader and which are Reachable.
+
+Kill the Leader: Access the terminal of your Leader VM and stop the Docker service:
+
+Bash
+
+sudo systemctl stop docker
+
+<img width="616" height="122" alt="image" src="https://github.com/user-attachments/assets/15036d2c-1ffd-4fb3-a7ce-3b774aacb974" />
+
+
+To validate your Manager HA, Service Reallocation, and Auto-Restart Policy, you must perform a "controlled disaster" test. This proves that the SkillfyBank system can recover from both a hardware failure (VM down) and a software failure (app crash).
+
+1. Validate Manager High Availability (HA)
+The goal is to prove that if the "Leader" manager fails, the remaining managers elect a new leader and the cluster keeps running.
+
+Check current roles: Run docker node ls on Manager-1. Identify which node is the Leader and which are Reachable.
+
+Kill the Leader: Access the terminal of your Leader VM and stop the Docker service:
+
+Bash
+
+sudo systemctl stop docker
+Verify Election: Go to a different manager (Manager-2) and run docker node ls again.
+
+Evidence: The old leader should now be marked as Down/Unreachable. One of the other managers will automatically be promoted to Leader.
+
+2. Validate Service Reallocation
+This proves that when a node dies, Docker Swarm "moves" the banking services to a healthy VM.
+
+Locate the Tasks: Run docker stack ps skillfy-bank to see which VMs are currently hosting your containers (e.g., Transaction-service running on Worker-1).
+
+Simulate VM Failure: Go to your Google Cloud Console and "Stop" a VM that is currently running a task.
+
+Check Recovery: Wait about 30 seconds and run docker stack ps skillfy-bank on a manager.
+
+Evidence: You will see the tasks on the stopped VM marked as Shutdown. New tasks for those same services will automatically appear as Running on a different, healthy node.
+
+<img width="677" height="343" alt="image" src="https://github.com/user-attachments/assets/797f1fab-52bc-4d53-a9e3-b03147bd26c3" />
+
+Validate Auto-Restart Policy
+This confirms that if a specific container crashes (but the VM is still fine), Docker restarts it based on your restart_policy.
+
+Identify a Container: Run docker ps on any node to get the Container ID of one of your services (e.g., Notification-service).
+
+Force a Crash: Kill the main process inside that specific container to simulate a software error:
+
+Bash
+
+docker kill <CONTAINER_ID>
+
+<img width="659" height="208" alt="image" src="https://github.com/user-attachments/assets/5f29065d-e56e-40fb-9998-c00c5f9a808a" />
+
+
+To add a custom health check to your multi-stage Dockerfile, you need to make two additions. First, you must install curl in the Run stage (Stage 2) because the JRE image is "slim" and doesn't include it by default. Second, you add the HEALTHCHECK instruction.
+
+Since your Java file Transaction.java is likely a simple console application (not a web server), a standard HTTP health check using curl might fail. I will show you two ways to do this:
+
+Option 1: The "Process Check" (Best for simple Java apps)
+If your app does not start a web server on a port, use this to check if the Java process is still alive.
+
+----------------------------------------------------------------------------
+Dockerfile
+
+# Stage 1: Build stage
+FROM eclipse-temurin:17-jdk-jammy AS build
+WORKDIR /app
+COPY . .
+RUN javac Transaction.java
+
+# Stage 2: Run stage
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+COPY --from=build /app/Transaction.class .
+
+# --- NEW: ADD HEALTHCHECK ---
+# This checks if the Java process 'Transaction' is running in the process list
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD ps -ef | grep [j]ava || exit 1
+
+CMD ["java", "Transaction"]
+Option 2: The "Web Check" (Best for Spring Boot/Web apps)
+If your application opens a port (e.g., 8080), use this. You must install curl first.
+
+Dockerfile
+
+# Stage 2: Run stage
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+
+# 1. Install curl (Required for JRE images)
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/Transaction.class .
+
+# 2. Add Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD curl -f http://localhost:8080/ || exit 1
+
+CMD ["java", "Transaction"]
+
+------------------------------------------------
+How to verify it in your Swarm
+After you build, push, and deploy this updated Dockerfile:
+
+Wait 30 seconds (the interval you set).
+
+Run the status command:
+
+Bash
+
+docker ps
+Look for the status: Under the STATUS column, you should specifically see: Up 2 minutes (healthy)
+
+If it says (unhealthy), it means your CMD command (the curl or the ps check) returned an error.
+
+docker stack ps skillfy-bank
+
+<img width="664" height="302" alt="image" src="https://github.com/user-attachments/assets/0d44b5a1-0894-45e8-97a2-b795e9332938" />
+
+
+
+
+
+
+
 
 
 
